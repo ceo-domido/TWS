@@ -1,0 +1,14 @@
+<component name="libraryTable">
+  <library name="Maven: com.ib:TwsApi:9.73.07">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/com/ib/TwsApi/9.73.07/TwsApi-9.73.07.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/com/ib/TwsApi/9.73.07/TwsApi-9.73.07-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="file://C:/TWS API/source/JavaClient" />
+      <root url="jar://$MAVEN_REPOSITORY$/com/ib/TwsApi/9.73.07/TwsApi-9.73.07-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
