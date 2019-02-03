@@ -1,9 +1,10 @@
 import com.ib.client.Bar;
 import com.ib.client.Contract;
-import com.mongodb.BasicDBObject;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 /*
@@ -16,13 +17,12 @@ import java.util.*;
  *
  * @author alexe
  */
-public class HistoryItem implements MongoWrapper<HistoryItem> {
+public class HistoryItem implements DateItem {
 
     public HistoryItem() {
         contract = new Contract();
         barSize = "1 min";
         dataType = "MIDPOINT";
-        historyData = new TreeMap();
         id = new ObjectId();
     }
 
@@ -30,74 +30,91 @@ public class HistoryItem implements MongoWrapper<HistoryItem> {
         this.contract = contract;
         this.barSize = barSize;
         this.dataType = dataType;
-        this.historyData = new TreeMap<>();
         this.id = new ObjectId();
     }
     
     public Contract contract;
     public String barSize;
     public String dataType;
-    public TreeMap<Calendar, Bar> historyData;
+    public long timestamp;
+    protected Bar data = null;
+
+    public Bar getData() {
+        return data;
+    }
+
+    public void setData(Bar data) {
+        SimpleDateFormat ft = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
+        Calendar parsingDate = Calendar.getInstance(TimeZone.getTimeZone("EST"));
+        this.data = data;
+        try {
+            parsingDate.setTime(ft.parse(data.time()));
+            timestamp = parsingDate.getTimeInMillis();
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+    }
+
     public ObjectId id;
 
     static public HistoryItem createFromDocument(Document doc) {
         HistoryItem item = new HistoryItem();
-        item.id = doc.getObjectId("_id");
         item.barSize = doc.getString("barSize");
         item.dataType = doc.getString("dataType");
-        Contract contract = new Contract();
-        contract.exchange(doc.getString("exchange"));
-        contract.secType(doc.getString("secType"));
-        contract.currency(doc.getString("currency"));
-        contract.symbol(doc.getString("symbol"));
-        List<Document> list = (List<Document>) doc.get("history", List.class);
-        for (Document d : list) {
-            Calendar cal = Calendar.getInstance();
-            cal.setTimeInMillis(d.getLong("timestamp"));
-            Bar bar = new Bar(
-                    d.getString("time"),
-                    d.getDouble("open"),
-                    d.getDouble("high"),
-                    d.getDouble("low"),
-                    d.getDouble("close"),
-                    d.getLong("volume"),
-                    d.getInteger("count"),
-                    d.getInteger("wap")
-            );
-            item.historyData.put(cal,bar);
-        }
+        item.contract = new Contract();
+        item.contract.exchange(doc.getString("exchange"));
+        item.contract.secType(doc.getString("secType"));
+        item.contract.currency(doc.getString("currency"));
+        item.contract.symbol(doc.getString("symbol"));
+        item.timestamp = doc.getLong("timestamp");
+        item.data = new Bar(
+                doc.getString("time"),
+                doc.getDouble("open"),
+                doc.getDouble("high"),
+                doc.getDouble("low"),
+                doc.getDouble("close"),
+                doc.getLong("volume"),
+                doc.getInteger("count"),
+                doc.getDouble("wap")
+        );
         return item;
     }
 
     @Override
     public Document getDocument() {
         Document doc = new Document();
-        doc.append("_id", id);
+        doc.append("_id", getId());
         doc.append("barSize", barSize);
         doc.append("dataType", dataType);
         doc.append("exchange", contract.exchange());
-        doc.append("secType", contract.secType());
+        doc.append("secType", contract.secType().getApiString());
         doc.append("currency", contract.currency());
         doc.append("symbol", contract.symbol());
-        List<Document> list = new ArrayList();
-        for (Map.Entry<Calendar,Bar> entry : historyData.entrySet()) {
-            Document d = new Document();
-            d.append("timestamp", entry.getKey().getTimeInMillis());
-            d.append("time", entry.getValue().time());
-            d.append("open", entry.getValue().open());
-            d.append("high", entry.getValue().high());
-            d.append("low", entry.getValue().close());
-            d.append("close",entry.getValue().close());
-            d.append("volume", entry.getValue().volume());
-            d.append("count", entry.getValue().count());
-            d.append("wap",entry.getValue().wap());
-            list.add(d);
-        }
+        doc.append("timestamp", timestamp);
+        doc.append("time", data.time());
+        doc.append("open", data.open());
+        doc.append("high", data.high());
+        doc.append("low", data.close());
+        doc.append("close",data.close());
+        doc.append("volume", data.volume());
+        doc.append("count", data.count());
+        doc.append("wap",data.wap());
+        doc.append("class",getClassId());
+        doc.append("contract", getContractId());
         return doc;
     }
 
     public String getContractId() {
-        return contract.symbol()+"-"+contract.currency()+"-"+contract.secType()+"-"+contract.exchange();
+        String result = contract.symbol()+"-"+contract.currency()+"-"+contract.secType()+"-"+contract.exchange();
+        return  result;
     }
 
+    public String getClassId() {
+        String result = contract.symbol()+"-"+contract.currency()+"-"+contract.secType()+"-"+contract.exchange() +"-"+barSize+"-"+dataType;
+        return  result;
+    }
+
+    public String getId() {
+        return getClassId() + "-" + String.valueOf(timestamp);
+    }
 }
