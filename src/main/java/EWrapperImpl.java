@@ -91,6 +91,7 @@ public class EWrapperImpl implements EWrapper {
                         endOfPeriod.add(Calendar.MINUTE, 0);
                         HistoryItem item = new HistoryItem(contract, "1 min", "MIDPOINT");
                         do {
+                            while (requests.size()>40) {Thread.sleep(500);}
                             requestHistoryData(this.getClient(), item, startOfPeriod);
                             startOfPeriod.add(Calendar.MINUTE, 24 * 60);
                         } while (startOfPeriod.before(endOfPeriod));
@@ -141,8 +142,15 @@ public class EWrapperImpl implements EWrapper {
                 System.out.println("Loading collection of contracts is done");
             }
 
-            MACDSignal signal = new MACDSignal(hystoricalData,new HistoryItem(portfolio.get(0), "1 min", "MIDPOINT"),17280, 37440, 12960);
-            signal.train("TrailedProfit-20-MSFT-USD-STK-SMART-1 min-MIDPOINT");
+            MACDSignal signal = new MACDSignal(hystoricalData,new HistoryItem(portfolio.get(1), "1 min", "MIDPOINT"),17280, 37440, 12960);
+            signal.train(
+                    new String[]{
+                            "MSFT-USD-STK-SMART-1 min-MIDPOINT",
+                            "SBUX-USD-STK-SMART-1 min-MIDPOINT"},
+                    new String[]{
+                            "TrailedProfit-5-MSFT-USD-STK-SMART-1 min-MIDPOINT",
+                            "TrailedProfit-5-SBUX-USD-STK-SMART-1 min-MIDPOINT"
+                    });
 
             // Load portfolio
             System.out.println("Loading indicators...");

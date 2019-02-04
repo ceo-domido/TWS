@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Sorts;
 import org.apache.commons.collections4.queue.CircularFifoQueue;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.math3.stat.descriptive.moment.Mean;
 import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
 import org.bson.Document;
@@ -171,16 +172,16 @@ public class MACDSignal extends Indicator {
             prevMACD = MACD;
             MACD = (sEMA-lEMA)*aA + MACD*(1-aA);
             if (prevMACD<0 && MACD>0) {
-                result += buyProfit[i];
+                result += buyProfit[i]-0.005;
             }
             if (prevMACD>0 && MACD<0) {
-                result += sellProfit[i];
+                result += sellProfit[i]-0.005;
             }
         }
         return result;
     }
 
-    public void train(String profitClass) {
+    public void train(String[] dataClass, String[] profitClass) {
         final int SA_MIN = 10;
         final int SA_MAX = 17280;
         final int LA_MIN = 10;
@@ -189,11 +190,11 @@ public class MACDSignal extends Indicator {
         final int AA_MAX = 12960;
 
         final int EPOCH_NUM = 100;
-        final int POPULATION = 100;
+        final int POPULATION = 500;
 
-        final int TOURNAMENTS = 250;
-        final int MUTATIONS = 250;
-        final int CROSSOVERS = 250;
+        final int TOURNAMENTS = POPULATION;
+        final int MUTATIONS = (int) (POPULATION*0.5);
+        final int CROSSOVERS = POPULATION;
 
         System.out.println("Start training of MACD Signal");
 
@@ -205,74 +206,81 @@ public class MACDSignal extends Indicator {
             population[i][2] = ThreadLocalRandom.current().nextInt(AA_MIN, Math.max(Math.min(AA_MAX + 1, population[i][0]),AA_MIN+1));
         }
 
-        //Prepare training sets
-        ArrayList<Double> pricesArray = new ArrayList<>();
-        MongoCursor<Document> cursor = historyData
-                .find(eq("class",historyItem.getClassId()))
-                .sort(Sorts.ascending("timestamp")).iterator();
-        while (cursor.hasNext()) {
-            pricesArray.add(cursor.next().getDouble("close"));
-        }
-        ArrayList<Double> buyProfitsArray = new ArrayList<>();
-        ArrayList<Double> sellProfitsArray = new ArrayList<>();
-        cursor = historyData
-                .find(eq("class",profitClass))
-                .sort(Sorts.ascending("timestamp")).iterator();
-        while (cursor.hasNext()) {
-            Document doc = cursor.next();
-            buyProfitsArray.add(doc.getDouble("buyProfit"));
-            sellProfitsArray.add(doc.getDouble("sellProfit"));
-        }
-
-        Double[] prices = pricesArray.toArray(new Double[pricesArray.size()]);
-        Double[] buyProfits = buyProfitsArray.toArray(new Double[buyProfitsArray.size()]);
-        Double[] sellProfits = sellProfitsArray.toArray(new Double[sellProfitsArray.size()]);
-        System.out.println("Training data loaded.");
+        ArrayList<HashMap<String, Double[]>> trainingSets = new ArrayList<>();
         StandardDeviation stdObj = new StandardDeviation();
         Mean meanObj = new Mean();
+
+        int SETS_NUM = Math.min(dataClass.length, profitClass.length);
+        for (int k=0; k<SETS_NUM; k++) {
+            //Prepare training sets
+            ArrayList<Double> pricesArray = new ArrayList<>();
+            MongoCursor<Document> cursor = historyData
+                    .find(eq("class", dataClass[k]))
+                    .sort(Sorts.ascending("timestamp")).iterator();
+            while (cursor.hasNext()) {
+                pricesArray.add(cursor.next().getDouble("close"));
+            }
+            ArrayList<Double> buyProfitsArray = new ArrayList<>();
+            ArrayList<Double> sellProfitsArray = new ArrayList<>();
+            cursor = historyData
+                    .find(eq("class", profitClass[k]))
+                    .sort(Sorts.ascending("timestamp")).iterator();
+            while (cursor.hasNext()) {
+                Document doc = cursor.next();
+                buyProfitsArray.add(doc.getDouble("buyProfit"));
+                sellProfitsArray.add(doc.getDouble("sellProfit"));
+            }
+
+            Double[] prices = pricesArray.toArray(new Double[pricesArray.size()]);
+            Double[] buyProfits = buyProfitsArray.toArray(new Double[buyProfitsArray.size()]);
+            Double[] sellProfits = sellProfitsArray.toArray(new Double[sellProfitsArray.size()]);
+            HashMap<String,Double[]> set = new HashMap<>();
+            set.put("prices", prices);
+            set.put("buys", buyProfits);
+            set.put("sells", sellProfits);
+            set.put("mean", new Double[]{meanObj.evaluate(ArrayUtils.toPrimitive(prices))});
+            trainingSets.add(set);
+        }
+        System.out.println("Training data loaded.");
+
 
 
         double[] profit = new double[POPULATION];
         double[] fitness = new double[POPULATION];
         int[] alphaSpecies = population[0];
         double alphaFitness = 0;
+        double alphaProfit = 0;
         for (int epoch=0; epoch<EPOCH_NUM; epoch++ ) {
             //Update profit values
             for (int i=0; i<POPULATION; i++) {
-                profit[i] = testProfit(prices, buyProfits, sellProfits, population[i][0], population[i][1], population[i][2]);
+                profit[i] = 0.0;
+                for (int k=0; k<SETS_NUM; k++) {
+                    profit[i] += testProfit(trainingSets.get(k).get("prices"),
+                            trainingSets.get(k).get("buys"),
+                            trainingSets.get(k).get("sells"),
+                            population[i][0],
+                            population[i][1],
+                            population[i][2]);
+                }
             }
             // fitness function calculation
-            double[] xCoord = new double[POPULATION];
-            double[] yCoord = new double[POPULATION];
-            double[] zCoord = new double[POPULATION];
-            for (int i=0; i<POPULATION; i++) {
-                xCoord[i] = population[i][0];
-                yCoord[i] = population[i][1];
-                zCoord[i] = population[i][2];
-            }
-            double stdRatio = (1-epoch/EPOCH_NUM)*0.1;
-            StandardDeviation std = new StandardDeviation();
-            double xS = std.evaluate(xCoord)*stdRatio;
-            double yS = std.evaluate(yCoord)*stdRatio;
-            double zS = std.evaluate(zCoord)*stdRatio;
-            double xC = 1.0/Math.sqrt(2.0*Math.PI*xS*xS);
-            double yC = 1.0/Math.sqrt(2.0*Math.PI*yS*yS);
-            double zC = 1.0/Math.sqrt(2.0*Math.PI*zS*zS);
-            final int PROBES = 50;
             for (int i=0; i<POPULATION; i++) {
                 fitness[i] = 0.0;
-                for (int j=0; j<PROBES; j++) {
-                    double xP = ThreadLocalRandom.current().nextGaussian()*xS + population[i][0];
-                    double yP = ThreadLocalRandom.current().nextGaussian()*yS + population[i][1];
-                    double zP = ThreadLocalRandom.current().nextGaussian()*zS + population[i][2];
-                    xP = xP < SA_MIN ? SA_MIN : xP > SA_MAX ? SA_MAX : xP;
-                    yP = yP < xP ? xP : yP > LA_MAX ? LA_MAX : yP;
-                    zP = zP < AA_MIN ? AA_MIN : zP > xP ? xP : zP;
-                    double xD = xP - population[i][0];
-                    double yD = yP - population[i][1];
-                    double zD = zP - population[i][2];
-                    double weight = Math.exp(-1/2 *(xD*xD/(xS*xS) + yD*yD/(yS*yS) + zD*zD/(zS*zS)));
-                    fitness[i] += testProfit(prices, buyProfits, sellProfits, (int) xP, (int) yP, (int) zP)*weight;
+                for (int xI=-1; xI<1; xI++) {
+                    for (int yI=-1; yI<1; yI++) {
+                        for (int zI=-1; zI<1; zI++) {
+                            int xP = (int)((1+xI*0.01)*population[i][0]);
+                            int yP = (int)((1+yI*0.01)*population[i][1]);
+                            int zP = (int)((1+zI*0.01)*population[i][2]);
+                            for (int k=0; k<SETS_NUM; k++) {
+                                fitness[i] += testProfit(trainingSets.get(k).get("prices"),
+                                        trainingSets.get(k).get("buys"),
+                                        trainingSets.get(k).get("sells"),
+                                        xP, yP, zP)/9/
+                                        trainingSets.get(k).get("mean")[0];
+                            }
+                        }
+                    }
                 }
             }
 
@@ -283,6 +291,8 @@ public class MACDSignal extends Indicator {
                 if (fitness[i]>fitness[alpha]) alpha=i;
             }
             alphaSpecies = population[alpha];
+            alphaFitness = fitness[alpha];
+            alphaProfit = profit[alpha];
 
             // Tournament for surviving
             for (int i=0; i<POPULATION; i++) {
@@ -318,35 +328,54 @@ public class MACDSignal extends Indicator {
             }
             shuffleArray(survived,1);
             // Mutations
-            int numMutations = MUTATIONS*(1-epoch/EPOCH_NUM);
-            //int numMutations = MUTATIONS;
+            //int numMutations = MUTATIONS*(1-epoch/EPOCH_NUM);
+            int numMutations = MUTATIONS;
             int[][] mutated = new int[POPULATION][3];
+            double[] k1 = new double[POPULATION];
+            double[] k2 = new double[POPULATION];
+            double[] k3 = new double[POPULATION];
+            for (int i=0; i<POPULATION; i++) {
+                k1[i] = population[i][0];
+                k1[i] = population[i][1];
+                k1[i] = population[i][2];
+            }
+            double std1 = stdObj.evaluate(k1);
+            double std2 = stdObj.evaluate(k2);
+            double std3 = stdObj.evaluate(k3);
+            double mutationRatio = 0.1;
             for (int i=0; i<POPULATION; i++) {
                 if (i<numMutations) {
-                    mutated[i][0] = ThreadLocalRandom.current().nextInt(SA_MIN, SA_MAX + 1);
-                    mutated[i][1] = ThreadLocalRandom.current().nextInt(Math.min(Math.max(LA_MIN,mutated[i][0]),LA_MAX), LA_MAX + 1);
-                    mutated[i][2] = ThreadLocalRandom.current().nextInt(AA_MIN, Math.max(Math.min(AA_MAX + 1, mutated[i][0]),AA_MIN+1));
+                    mutated[i][0] = (int) (ThreadLocalRandom.current().nextGaussian()*std1*mutationRatio+newborn[i][0]);
+                    mutated[i][1] = (int) (ThreadLocalRandom.current().nextGaussian()*std2*mutationRatio+newborn[i][1]);
+                    mutated[i][2] = (int) (ThreadLocalRandom.current().nextGaussian()*std3*mutationRatio+newborn[i][2]);
+                    mutated[i][1] = mutated[i][1] > mutated[i][0] ? mutated[i][1] : mutated[i][0];
+                    mutated[i][2] = mutated[i][2] < mutated[i][0] ? mutated[i][2] : mutated[i][0];
                 } else {
                     mutated[i] = newborn[i];
                 }
             }
             population = mutated;
             population[0] = alphaSpecies;
-            profit[0] = testProfit(prices, buyProfits, sellProfits, population[0][0], population[0][1], population[0][2]);
-            double stdD = stdObj.evaluate(profit);
-            double mean = meanObj.evaluate(profit);
-            System.out.printf("Epoch %d is completed. Found (%d, %d, %d) with total profit %f (mean %f deviation %f)%n", epoch, population[0][0],population[0][1],population[0][2],profit[0],mean, stdD);
+            System.out.printf("Epoch %d is completed. Found (%d, %d, %d) with total profit %f (fitness %f)%n", epoch, population[0][0],population[0][1],population[0][2],alphaProfit,alphaFitness);
         }
-
-        double stdD = stdObj.evaluate(profit);
-        double mean = meanObj.evaluate(profit);
-        System.out.printf("Found the best parameters (%d, %d, %d) with total profit %f (mean %f deviation %f)f%n", population[0][0],population[0][1],population[0][2],profit[0],mean, stdD);
+        System.out.printf("Found the best parameters (%d, %d, %d) with total profit %f%n", population[0][0],population[0][1],population[0][2],alphaProfit);
+        for (int k=0; k<SETS_NUM; k++) {
+            double p = testProfit(trainingSets.get(k).get("prices"),
+                    trainingSets.get(k).get("buys"),
+                    trainingSets.get(k).get("sells"),
+                    population[0][0],
+                    population[0][1],
+                    population[0][2]);
+            System.out.printf("Profit for %s is %f%n", dataClass[k],p);
+        }
         //Alpha is found
         this.macdIndicator = new MACDIndicator(historyData,historyItem,population[0][0],population[0][1],population[0][2]);
         // Trailing stop 1.0%
         // (9822, 34818, 1653) with total profit 17,355000
         // (1370, 32873, 10991) with total profit 20,005000
         // (13173, 29243, 1129) with total profit 17,760000
+        // (276, 997, 147) with total profit 17,570000 (mean 0,278200 deviation 4,353703)
+        // (50, 14770, 17) with total profit 21,820000 (mean 0,190760 deviation 4,044192)
         // Trailing stop 0.5%
         // (340, 3284, 210) with total profit 18,355000
         // (34, 23125, 20) with total profit 30,065000
