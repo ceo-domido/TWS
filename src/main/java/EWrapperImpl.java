@@ -76,8 +76,8 @@ public class EWrapperImpl implements EWrapper {
                             ", exchange: " + contract.exchange() +
                             ", primary exchange: " + contract.primaryExch());
 
-                    if (false) {
-//                    if (next.getBoolean("enabled")) {
+//                    if (false) {
+                    if (next.getBoolean("enabled")) {
                         System.out.println("Updating historical data for this contract...");
                         Calendar startOfPeriod = Calendar.getInstance(TimeZone.getTimeZone("EST"));
                         Document lastItem = hystoricalData.find(eq("contract", getContractId(contract)))
@@ -142,15 +142,6 @@ public class EWrapperImpl implements EWrapper {
                 System.out.println("Loading collection of contracts is done");
             }
 
-            MACDSignal signal = new MACDSignal(hystoricalData,new HistoryItem(portfolio.get(1), "1 min", "MIDPOINT"),17280, 37440, 12960);
-            signal.train(
-                    new String[]{
-                            "MSFT-USD-STK-SMART-1 min-MIDPOINT",
-                            "SBUX-USD-STK-SMART-1 min-MIDPOINT"},
-                    new String[]{
-                            "TrailedProfit-5-MSFT-USD-STK-SMART-1 min-MIDPOINT",
-                            "TrailedProfit-5-SBUX-USD-STK-SMART-1 min-MIDPOINT"
-                    });
 
             // Load portfolio
             System.out.println("Loading indicators...");
@@ -195,6 +186,37 @@ public class EWrapperImpl implements EWrapper {
                 cursor.close();
                 System.out.println("Indicators loading is done");
             }
+
+
+            //            MACDSignal signal = new MACDSignal(hystoricalData,new HistoryItem(portfolio.get(1), "1 min", "MIDPOINT"),17280, 37440, 12960);
+//            signal.newTrain(
+            FFNSignal signal = new FFNSignal(hystoricalData,new HistoryItem(portfolio.get(1), "1 min", "MIDPOINT"), 1000);
+            signal.trainFFN(
+                    new String[]{
+                            "MSFT-USD-STK-SMART-1 min-MIDPOINT",
+//                            "SBUX-USD-STK-SMART-1 min-MIDPOINT",
+//                            "NXPI-USD-STK-SMART-1 min-MIDPOINT",
+//                            "FB-USD-STK-SMART-1 min-MIDPOINT",
+//                            "JNJ-USD-STK-SMART-1 min-MIDPOINT",
+//                            "BRK B-USD-STK-SMART-1 min-MIDPOINT",
+//                            "CNC-USD-STK-SMART-1 min-MIDPOINT",
+//                            "AAPL-USD-STK-SMART-1 min-MIDPOINT",
+//                            "SFM-USD-STK-SMART-1 min-MIDPOINT",
+                            "DWDP-USD-STK-SMART-1 min-MIDPOINT"
+                    },
+                    new String[]{
+                            "TrailedProfit-5-MSFT-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-SBUX-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-NXPI-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-FB-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-JNJ-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-BRK B-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-CNC-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-AAPL-USD-STK-SMART-1 min-MIDPOINT",
+//                            "TrailedProfit-10-SFM-USD-STK-SMART-1 min-MIDPOINT",
+                            "TrailedProfit-5-DWDP-USD-STK-SMART-1 min-MIDPOINT"
+                    });
+
 
         } else {
             System.out.println("Contract collection is not initialized. Contracts cannot be loaded.");

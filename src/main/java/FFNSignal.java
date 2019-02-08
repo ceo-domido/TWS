@@ -12,25 +12,73 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.math3.stat.descriptive.moment.Mean;
 import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
 import org.bson.Document;
+import org.deeplearning4j.datasets.iterator.ExistingDataSetIterator;
+import org.deeplearning4j.eval.Evaluation;
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
+import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
+import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.Updater;
+import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.nn.weights.WeightInit;
+import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.nd4j.linalg.activations.Activation;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.cpu.nativecpu.NDArray;
+import org.nd4j.linalg.dataset.DataSet;
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
+import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.learning.config.Nesterovs;
+import org.nd4j.linalg.lossfunctions.LossFunctions;
 
-import java.lang.reflect.Array;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.TimeZone;
 import java.util.function.Function;
-import java.util.stream.DoubleStream;
 
 import static com.mongodb.client.model.Filters.*;
 import static io.jenetics.engine.EvolutionResult.toBestPhenotype;
 import static io.jenetics.engine.Limits.bySteadyFitness;
 
-public class MACDSignal extends Indicator {
-    private int window = 10;
-    private MACDIndicator macdIndicator;
+public class FFNSignal extends Indicator {
+    private int window = 1000;
+    private MultiLayerNetwork model;
 
-    public MACDSignal(MongoCollection<Document> history, HistoryItem historyItem, int shortPeriod, int longPeriod, int averagePeriod) {
+    public FFNSignal(MongoCollection<Document> history, HistoryItem historyItem, int window) {
         this.historyData = history;
         this.historyItem = historyItem;
-        this.macdIndicator = new MACDIndicator(history,historyItem,shortPeriod,longPeriod,averagePeriod);
+        this.window = window;
+        final int numInputs = window;
+        final int numHiddenNodes = 100;
+        final int numOutputs = 2;
+        MultiLayerConfiguration conf = new NeuralNetConfiguration
+                .Builder()
+                .seed(123)
+                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
+                .updater(Nesterovs.builder()
+                        .learningRate(0.005)
+                        .momentum(0.9)
+                        .build())
+                .list()
+                .layer(0, new DenseLayer
+                        .Builder()
+                        .nIn(numInputs)
+                        .nOut(numHiddenNodes)
+                        .weightInit(WeightInit.XAVIER)
+                        .activation(Activation.RELU)
+                        .build())
+                .layer(1, new OutputLayer
+                        .Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
+                        .weightInit(WeightInit.XAVIER)
+                        .activation(Activation.SOFTMAX)
+                        .nIn(numHiddenNodes)
+                        .nOut(numOutputs)
+                        .build())
+                .build();
+         model = new MultiLayerNetwork(conf);
+         model.init ();
     }
 
     @Override
@@ -45,49 +93,49 @@ public class MACDSignal extends Indicator {
 
     @Override
     public void update() {
-        macdIndicator.update();
-        System.out.println("Updating values for MACD signal...");
-        // start is now
-        Calendar startOfPeriod = Calendar.getInstance(TimeZone.getTimeZone("EST"));
-        // initialize current value
-        SignalItem signalItem = new SignalItem(this.getClassId());
-        // find last EMA record
-        Document lastValue = historyData.find(eq("class",signalItem.getClassId()))
-                .sort(Sorts.descending("timestamp")).first();
-        // if last record exist then start from it else start from some months later
-        if (lastValue != null) {
-            startOfPeriod.setTimeInMillis(lastValue.getLong("timestamp"));
-            signalItem = SignalItem.createFromDocument(lastValue);
-        } else {
-            // compute start value
-            startOfPeriod.add(Calendar.MONTH, -Global.HISTORY_MONTH_DEPTH);
-        }
-        CircularFifoQueue<MACDItem> macdItems = new CircularFifoQueue<>();
-        CircularFifoQueue<EMAItem> shortEmaItems = new CircularFifoQueue<>();
-        CircularFifoQueue<EMAItem> longEmaItems = new CircularFifoQueue<>();
-        MongoCursor<Document> cursor = historyData
-                .find(and(eq("class",macdIndicator.getClassId()),gt("timestamp",startOfPeriod.getTimeInMillis())))
-                .sort(Sorts.ascending("timestamp")).iterator();
-        while (cursor.hasNext()) {
-            Document doc = cursor.next();
-            MACDItem newItem = MACDItem.createFromDocument(doc);
-            macdItems.add(newItem);
-            Document shortEMADoc = historyData
-                    .find(and(eq("class",macdIndicator.shortEMA.getClassId()),eq("timestamp",newItem.timestamp)))
-                    .first();
-            Document longEMADoc = historyData
-                    .find(and(eq("class",macdIndicator.longEMA.getClassId()),eq("timestamp",newItem.timestamp)))
-                    .first();
-            if (shortEMADoc != null && longEMADoc != null) {
-                EMAItem shortEMA = EMAItem.createFromDocument(shortEMADoc);
-                EMAItem longEMA = EMAItem.createFromDocument(longEMADoc);
-                shortEmaItems.add(shortEMA);
-                longEmaItems.add(longEMA);
-
-                historyData.insertOne(signalItem.getDocument());
-                System.out.println("EMA value updated for date ");
-            }
-        }
+//        macdIndicator.update();
+//        System.out.println("Updating values for MACD signal...");
+//        // start is now
+//        Calendar startOfPeriod = Calendar.getInstance(TimeZone.getTimeZone("EST"));
+//        // initialize current value
+//        SignalItem signalItem = new SignalItem(this.getClassId());
+//        // find last EMA record
+//        Document lastValue = historyData.find(eq("class",signalItem.getClassId()))
+//                .sort(Sorts.descending("timestamp")).first();
+//        // if last record exist then start from it else start from some months later
+//        if (lastValue != null) {
+//            startOfPeriod.setTimeInMillis(lastValue.getLong("timestamp"));
+//            signalItem = SignalItem.createFromDocument(lastValue);
+//        } else {
+//            // compute start value
+//            startOfPeriod.add(Calendar.MONTH, -Global.HISTORY_MONTH_DEPTH);
+//        }
+//        CircularFifoQueue<MACDItem> macdItems = new CircularFifoQueue<>();
+//        CircularFifoQueue<EMAItem> shortEmaItems = new CircularFifoQueue<>();
+//        CircularFifoQueue<EMAItem> longEmaItems = new CircularFifoQueue<>();
+//        MongoCursor<Document> cursor = historyData
+//                .find(and(eq("class",macdIndicator.getClassId()),gt("timestamp",startOfPeriod.getTimeInMillis())))
+//                .sort(Sorts.ascending("timestamp")).iterator();
+//        while (cursor.hasNext()) {
+//            Document doc = cursor.next();
+//            MACDItem newItem = MACDItem.createFromDocument(doc);
+//            macdItems.add(newItem);
+//            Document shortEMADoc = historyData
+//                    .find(and(eq("class",macdIndicator.shortEMA.getClassId()),eq("timestamp",newItem.timestamp)))
+//                    .first();
+//            Document longEMADoc = historyData
+//                    .find(and(eq("class",macdIndicator.longEMA.getClassId()),eq("timestamp",newItem.timestamp)))
+//                    .first();
+//            if (shortEMADoc != null && longEMADoc != null) {
+//                EMAItem shortEMA = EMAItem.createFromDocument(shortEMADoc);
+//                EMAItem longEMA = EMAItem.createFromDocument(longEMADoc);
+//                shortEmaItems.add(shortEMA);
+//                longEmaItems.add(longEMA);
+//
+//                historyData.insertOne(signalItem.getDocument());
+//                System.out.println("EMA value updated for date ");
+//            }
+//        }
     }
 
     @Override
@@ -101,13 +149,12 @@ public class MACDSignal extends Indicator {
         doc.append("currency", historyItem.contract.currency());
         doc.append("symbol", historyItem.contract.symbol());
         doc.append("window", window);
-        doc.append("macdIndicator", macdIndicator.getDocument());
         doc.append("indicatorType", "MACDSignal");
         doc.append("class",getClassId());
         return doc;
     }
 
-    public static MACDSignal createFromDocument(Document doc, MongoCollection<Document> history) {
+    public static FFNSignal createFromDocument(Document doc, MongoCollection<Document> history) {
         HistoryItem item = new HistoryItem();
         item.barSize = doc.getString("barSize");
         item.dataType = doc.getString("dataType");
@@ -118,34 +165,55 @@ public class MACDSignal extends Indicator {
         item.contract.symbol(doc.getString("symbol"));
         int window = doc.getInteger("window");
         MACDIndicator macd = MACDIndicator.createFromDocument(doc.get("macdIndicator", Document.class), history);
-        MACDSignal result = new MACDSignal(history, item, 0,0,0);
-        result.macdIndicator = macd;
+        FFNSignal result = new FFNSignal(history, item, window);
         return result;
     }
 
-    public double testProfit(Double[] price, Double[] buyProfit, Double[] sellProfit, int shortPeriod, int longPeriod, int averagePeriod) {
-        double sA = 2.0/(1+shortPeriod);
-        double lA = 2.0/(1+longPeriod);
-        double aA = 2.0/(1+averagePeriod);
-        double sEMA = price[0];
-        double lEMA = price[0];
-        double MACD = 0.0;
-        double prevMACD;
-        double result = 0.0;
-        int end = Math.min(Math.min(price.length,buyProfit.length),sellProfit.length);
-        for (int i=1; i<end; i++) {
-            sEMA = price[i]*sA + sEMA*(1-sA);
-            lEMA = price[i]*lA + lEMA*(1-lA);
-            prevMACD = MACD;
-            MACD = (sEMA-lEMA)*aA + MACD*(1-aA);
-            if (prevMACD<0 && MACD>0) {
-                result += buyProfit[i]-0.005;
-            }
-            if (prevMACD>0 && MACD<0) {
-                result += sellProfit[i]-0.005;
-            }
+    private DataSetIterator getIterator(HashMap<String, Double[]> map) {
+        double[] prices = ArrayUtils.toPrimitive(map.get("prices"));
+        double[] buys = ArrayUtils.toPrimitive(map.get("buys"));
+        double[] sells = ArrayUtils.toPrimitive(map.get("sells"));
+        final int LENGTH = Math.min(prices.length, Math.min(buys.length, sells.length));
+        INDArray features = Nd4j.zeros(new int[]{LENGTH-window,window});
+        INDArray labels = Nd4j.zeros(new int[]{LENGTH-window,2});
+        for (int i = window; i<LENGTH; i++) {
+            INDArray frame = Nd4j.create(prices, new int[]{1, window});
+            features.putRow(i-window, frame);
+            labels.putScalar(i-window,0,buys[i-1]);
+            labels.putScalar(i-window,1, sells[i-1]);
         }
-        return result;
+        DataSet data = new DataSet(features, labels);
+        return new ExistingDataSetIterator(data);
+    }
+
+    public void trainFFN(String[] dataClass, String[] profitClass) {
+        ArrayList<HashMap<String, Double[]>> sets = prepareTrainingSets(dataClass,profitClass);
+        DataSetIterator trainIter = getIterator(sets.get(0));
+        model.setListeners(new ScoreIterationListener(10));
+        for ( int n = 0; n < 30; n++) {
+            model.fit(trainIter);
+        }
+
+        System.out.println("Evaluate model....");
+        Evaluation eval = new Evaluation(2);
+        DataSetIterator testIter = getIterator(sets.get(1));
+        while(testIter.hasNext()){
+            DataSet t = testIter.next();
+            INDArray features = t.getFeatures();
+            INDArray lables = t.getLabels();
+            INDArray predicted = model.output(features,false);
+            eval.eval(lables, predicted);
+        }
+
+        //Print the evaluation statistics
+        System.out.println(eval.stats());
+    }
+
+    public double testProfit(Double[] price, Double[] buyProfit, Double[] sellProfit, int window) {
+        for (int i = window; i<price.length; i++) {
+
+        }
+        return 0;
     }
 
     public ArrayList<HashMap<String, Double[]>> prepareTrainingSets(String[] dataClass, String[] profitClass) {
@@ -202,9 +270,7 @@ public class MACDSignal extends Indicator {
                 profit[k] += testProfit(trainingSets.get(k).get("prices"),
                         trainingSets.get(k).get("buys"),
                         trainingSets.get(k).get("sells"),
-                        gt.get(0,0).intValue(),
-                        gt.get(0,1).intValue(),
-                        gt.get(0,2).intValue());
+                        gt.get(0,0).intValue());
             }
             return profit;
         }
@@ -224,7 +290,7 @@ public class MACDSignal extends Indicator {
                             double fit = testProfit(trainingSets.get(k).get("prices"),
                                     trainingSets.get(k).get("buys"),
                                     trainingSets.get(k).get("sells"),
-                                    xP, yP, zP)/9/
+                                    xP)/9/
                                     trainingSets.get(k).get("mean")[0];
                             fitness += fit > MAX_PROFIT ? MAX_PROFIT : fit;
                         }
