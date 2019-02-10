@@ -1,6 +1,9 @@
 
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
 
 import com.ib.client.*;
 import com.mongodb.MongoClient;
@@ -10,15 +13,18 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Sorts;
 import org.bson.Document;
+
 import samples.testbed.advisor.FAMethodSamples;
 import samples.testbed.contracts.ContractSamples;
 import samples.testbed.orders.AvailableAlgoParams;
 import samples.testbed.orders.OrderSamples;
 
+
 import com.ib.client.Types.FADataType;
 
 
 import static com.mongodb.client.model.Filters.gte;
+import static java.util.logging.Level.INFO;
 
 public class Testbed {
 
@@ -46,12 +52,23 @@ public class Testbed {
             }
         }.start();
 
+        // Enable MongoDB logging in general
+        System.setProperty("DEBUG.MONGO", "false");
+
+        // Enable DB operation tracing
+        System.setProperty("DB.TRACE", "false");
+        Logger mongoLogger = Logger.getLogger( "org.mongodb.driver" );
+        mongoLogger.setLevel(Level.SEVERE);
+
+//        Logger mongoLogger = LoggerFactory.getLogger("org.mongodb.driver.protocol.command" );
+//        mongoLogger.
+
 //        MongoClientURI uri = new MongoClientURI(
 //                "mongodb+srv://admin:Dfujys314!@tws-4pvja.gcp.mongodb.net/test?retryWrites=true");
 //        MongoClient mongoClient = new MongoClient(uri);
 
-        MongoClient mongoClient = new MongoClient();
 
+        MongoClient mongoClient = new MongoClient();
         wrapper.database = mongoClient.getDatabase("stocks");
         wrapper.hystoricalData = wrapper.database.getCollection("historicalData");
         wrapper.loadState();

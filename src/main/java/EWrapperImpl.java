@@ -234,8 +234,13 @@ public class EWrapperImpl implements EWrapper {
     }
 
 
+//    @Override
+//    public void tickPrice(int i, int i1, double v, TickAttrib tickAttr) {
+//
+//    }
+
     @Override
-    public void tickPrice(int i, int i1, double v, TickAttrib tickAttr) {
+    public void tickPrice(int i, int i1, double v, TickAttr tickAttr) {
 
     }
 
@@ -390,9 +395,14 @@ public class EWrapperImpl implements EWrapper {
     }
 
     @Override
-    public void updateMktDepthL2(int i, int i1, String s, int i2, int i3, double v, int i4, boolean b) {
+    public void updateMktDepthL2(int i, int i1, String s, int i2, int i3, double v, int i4) {
 
     }
+
+//    @Override
+//    public void updateMktDepthL2(int i, int i1, String s, int i2, int i3, double v, int i4, boolean b) {
+//
+//    }
 
     //	//! [updatemktdepth]
 //	@Override
@@ -769,14 +779,24 @@ public class EWrapperImpl implements EWrapper {
     }
 
     @Override
-    public void tickByTickAllLast(int i, int i1, long l, double v, int i2, TickAttribLast tickAttribLast, String s, String s1) {
+    public void tickByTickAllLast(int i, int i1, long l, double v, int i2, TickAttr tickAttr, String s, String s1) {
 
     }
 
     @Override
-    public void tickByTickBidAsk(int i, long l, double v, double v1, int i1, int i2, TickAttribBidAsk tickAttribBidAsk) {
+    public void tickByTickBidAsk(int i, long l, double v, double v1, int i1, int i2, TickAttr tickAttr) {
 
     }
+
+//    @Override
+//    public void tickByTickAllLast(int i, int i1, long l, double v, int i2, TickAttribLast tickAttribLast, String s, String s1) {
+//
+//    }
+//
+//    @Override
+//    public void tickByTickBidAsk(int i, long l, double v, double v1, int i1, int i2, TickAttribBidAsk tickAttribBidAsk) {
+//
+//    }
 
 //	@Override
 //	public void tickByTickAllLast(int i, int i1, long l, double v, int i2, TickAttrib tickAttr, String s, String s1) {
@@ -793,10 +813,10 @@ public class EWrapperImpl implements EWrapper {
 
     }
 
-    @Override
-    public void orderBound(long l, int i, int i1) {
-
-    }
+//    @Override
+//    public void orderBound(long l, int i, int i1) {
+//
+//    }
 
     private String getDuration(String barSize) {
         switch (barSize) {
